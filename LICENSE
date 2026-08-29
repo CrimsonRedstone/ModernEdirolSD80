@@ -1,0 +1,29 @@
+Modern Edirol SD-80
+Copyright (c) 2026 Crimson Redstone
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+This plugin is built on JUCE (https://juce.com/), which is licensed
+under the GPL v3 unless you hold a commercial JUCE license. Linking
+against JUCE under GPL v3 requires this plugin to be GPL v3 as well.
+
+Roland, Edirol, Studio Canvas and SD-80 are trademarks of their
+respective owners. This is an unofficial editor and is not affiliated
+with Roland Corporation.
+
+ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+The optional Windows ASIO path fetches Steinberg's ASIO SDK 2.3.4
+(GPL-3 since 2025) at CMake configure time.
