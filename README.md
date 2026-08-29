@@ -2,7 +2,7 @@
 
 VST3 / AU / CLAP / Standalone **MIDI controller** for the Edirol / Roland Studio Canvas **SD-80** (32-part, USB).
 
-**v1.4.1** by **[Crimson Redstone](https://crimsonredstone.bandcamp.com/)**. Freeware. If you'd like to support the author, consider [purchasing the music](https://crimsonredstone.bandcamp.com/).
+**v1.4.1** by **[Crimson Redstone](https://crimsonredstone.bandcamp.com/)**. Freeware. If you'd like to support me, consider [purchasing my music](https://crimsonredstone.bandcamp.com/).
 
 This is an unofficial editor. Roland / Edirol names and the SD-80 sound set are their trademarks.
 
@@ -107,3 +107,10 @@ Read [HARDWARE.md](HARDWARE.md) before you panic. The module is old. Treat it li
 ## License
 
 Plugin source: see [LICENSE](LICENSE). JUCE itself is GPL v3 (or a paid JUCE license). ASIO is a trademark of Steinberg Media Technologies GmbH.
+
+## Disclaimer
+I know enough to understand and mess with code but nothing advanced, most of the code here was written by AI.
+Therefore if you have any complaints, bug reports, or suggestions make sure to be percise, detailed & with images where neccessary.
+
+## Known Bugs:
+Nothing in the Demo tab works and you should not mess with it.
