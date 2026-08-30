@@ -63,15 +63,6 @@ Or double-click `build.bat`. It writes `logs\build.log` even when CMake fails. J
 
 Requires **CMake 3.22+**, a C++20 compiler, and Git. JUCE is **GPL v3** unless you have a commercial JUCE license — see [LICENSE](LICENSE).
 
-## FL Studio (ports 8 & 9)
-
-One VST3 cannot reliably present two host MIDI buses in FL Studio, so the plugin opens the SD-80 ports **directly**:
-
-1. Build and install the VST3.
-2. Load **Modern Edirol SD80** as a generator.
-3. OPTIONS → **Part A USB** / **Part B USB** → the two EDIROL SD-80 outputs.
-4. Optionally still assign FL Studio MIDI Out port 8 → SD-80 port 1 and port 9 → port 2 for the piano roll. Enable *Host MIDI mirrors Part A/B* if you want the wrapper to record the CC stream.
-
 ## Manual sources
 
 Patch names, bank MSB/LSB, SysEx addresses, checksum, MFX type list and CC numbers come from the **SD-80 Owner’s Manual** (Roland, 2002):
