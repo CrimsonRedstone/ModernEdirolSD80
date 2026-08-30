@@ -1,8 +1,11 @@
 #include <JuceHeader.h>
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#include "BinaryData.h"
 
 // Custom standalone: native title bar only. No JUCE "Options" / "Settings" chrome.
 // Audio + MIDI-input live in the plugin OPTIONS tab (AudioDeviceSelectorComponent).
+// Windows/macOS chrome uses the juceaide .ico/.icns from CMake ICON_BIG.
+// setIcon covers Linux and any peer that ignores the bundle resource.
 class Mesd80Window : public juce::DocumentWindow
 {
 public:
@@ -32,7 +35,9 @@ public:
         auto* editor = holder->processor->createEditorIfNeeded();
         setContentOwned(editor, true);
         centreWithSize(getWidth(), getHeight());
+        applyAppIcon();
         setVisible(true);
+        applyAppIcon();
     }
 
     ~Mesd80Window() override
@@ -53,11 +58,29 @@ public:
         juce::JUCEApplicationBase::quit();
     }
 
+    void visibilityChanged() override
+    {
+        DocumentWindow::visibilityChanged();
+        if (isShowing())
+            applyAppIcon();
+    }
+
     // ApplicationProperties first so it is destroyed last.
     juce::ApplicationProperties appProps;
     std::unique_ptr<juce::StandalonePluginHolder> holder;
 
 private:
+    void applyAppIcon()
+    {
+        auto img = juce::ImageFileFormat::loadFrom(
+            BinaryData::icon_png, (size_t) BinaryData::icon_pngSize);
+        if (! img.isValid())
+            return;
+        setIcon(img);
+        if (auto* p = getPeer())
+            p->setIcon(img);
+    }
+
     void enableKeyboardMidiInputs()
     {
         if (holder == nullptr)

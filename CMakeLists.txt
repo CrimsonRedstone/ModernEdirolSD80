@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(ModernEdirolSD80 VERSION 1.4.1 LANGUAGES C CXX)
+project(ModernEdirolSD80 VERSION 1.5.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,9 +34,18 @@ juce_add_plugin(ModernEdirolSD80
     PRODUCT_NAME "Modern Edirol SD80"
     VST3_CATEGORIES "Instrument"
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
-    MICROPHONE_PERMISSION_ENABLED FALSE)
+    MICROPHONE_PERMISSION_ENABLED FALSE
+    ICON_BIG   "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon-small.png")
 
 juce_generate_juce_header(ModernEdirolSD80)
+
+# Cassette-reel PNG for DocumentWindow::setIcon / Linux (Windows/macOS
+# bundles already get the juceaide .ico/.icns from ICON_BIG / ICON_SMALL).
+juce_add_binary_data(Mesd80Binary
+    SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon.png")
+set_target_properties(Mesd80Binary PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_sources(ModernEdirolSD80
     PRIVATE
@@ -51,6 +60,7 @@ target_sources(ModernEdirolSD80
         Source/MidiFileImporter.h
         Source/MidiPlayer.h
         Source/CassetteDeck.h
+        Source/MidiRoll.h
         Source/Skin.h
         Source/ParamLock.h)
 
@@ -104,6 +114,7 @@ endif()
 
 target_link_libraries(ModernEdirolSD80
     PRIVATE
+        Mesd80Binary
         juce::juce_audio_utils
         juce::juce_audio_devices
         juce::juce_audio_processors

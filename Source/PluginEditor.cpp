@@ -367,7 +367,9 @@ ModernEdirolSd80Editor::ModernEdirolSd80Editor(ModernEdirolSd80Processor& p)
     mixerPage.addAndMakeVisible(resetFxBtn);
 
     playerPage.addAndMakeVisible(deck);
-    playerHelp.setText("The cassette plays SMF out Part A USB. Mute/Solo on the mixer silence channels. Send setup only if you want this file to rewrite patches.",
+    playerPage.addAndMakeVisible(roll);
+    roll.attach(&proc.player);
+    playerHelp.setText("The cassette plays SMF out Part A USB. The piano-roll is coloured per channel; mixer mute/solo dims it. Send setup only if you want this file to rewrite patches.",
                        juce::dontSendNotification);
     playerHelp.setJustificationType(juce::Justification::centred);
     playerPage.addAndMakeVisible(playerHelp);
@@ -413,7 +415,7 @@ ModernEdirolSd80Editor::ModernEdirolSd80Editor(ModernEdirolSd80Processor& p)
 
     donateBtn.addListener(this);
     oi.addAndMakeVisible(donateBtn);
-    creditsBody.setText("Modern Edirol SD-80  v1.4.1  |  JUCE 9.0.1\nFreeware MIDI controller by Crimson Redstone.\nUnofficial editor for the Edirol / Roland Studio Canvas SD-80.\nRight-click any fader, knob, toggle, menu or strip name to lock it.",
+    creditsBody.setText("Modern Edirol SD-80  v1.5.4  |  JUCE 9.0.1\nFreeware MIDI controller by Crimson Redstone.\nUnofficial editor for the Edirol / Roland Studio Canvas SD-80.\nRight-click any fader, knob, toggle, menu or strip name to lock it.",
                         juce::dontSendNotification);
     creditsBody.setFont(juce::FontOptions(13.0f));
     oi.addAndMakeVisible(creditsBody);
@@ -708,6 +710,7 @@ void ModernEdirolSd80Editor::applySkin()
         b.setToggleState(i == proc.getSkinIndex(), juce::dontSendNotification);
     }
     deck.setPalette(kSkins[proc.getSkinIndex()]);
+    roll.setPalette(kSkins[proc.getSkinIndex()]);
     sendLookAndFeelChange();
     repaint();
 }
@@ -723,6 +726,7 @@ void ModernEdirolSd80Editor::setTab(Tab t)
     playerPage.setVisible(t == Tab::Player);
     demoPage.setVisible(t == Tab::Demos);
     optionsPage.setVisible(t == Tab::Options);
+    roll.setActive(t == Tab::Player);
     if (t == Tab::Mixer)
         dropHint.setText("Drop a .mid on the mixer to auto-assign banks, programs and mix.", juce::dontSendNotification);
     else if (t == Tab::Player)
@@ -912,10 +916,14 @@ void ModernEdirolSd80Editor::resized()
     }
 
     {
-        auto pp = playerPage.getLocalBounds().reduced(40);
-        playerWarn.setBounds(pp.removeFromBottom(22));
-        playerHelp.setBounds(pp.removeFromBottom(36));
-        deck.setBounds(pp.removeFromTop(juce::jmin(360, pp.getHeight())));
+        auto pp = playerPage.getLocalBounds().reduced(20, 16);
+        playerWarn.setBounds(pp.removeFromBottom(20));
+        playerHelp.setBounds(pp.removeFromBottom(32));
+        pp.removeFromBottom(4);
+        const int deckH = juce::jlimit(210, 300, pp.getHeight() * 2 / 5);
+        deck.setBounds(pp.removeFromTop(deckH));
+        pp.removeFromTop(8);
+        roll.setBounds(pp);
     }
 
     {
@@ -1312,6 +1320,16 @@ void ModernEdirolSd80Editor::updatePlayerUi()
     deck.setState(proc.player.isLoaded(), proc.player.isPlaying(), proc.player.getName(),
                   proc.player.getPosition(), proc.player.getLength());
     deck.setLooping(proc.player.isLooping());
+    juce::StringArray names;
+    std::uint32_t sil = 0;
+    for (int i = 0; i < 16; ++i)
+    {
+        names.add(proc.getPartPatchName(i));
+        if (proc.isPartSilenced(i))
+            sil |= (1u << i);
+    }
+    roll.setPartNames(names);
+    roll.setSilencedMask(sil);
 }
 
 void ModernEdirolSd80Editor::confirmDanger(const juce::String& titleText, const juce::String& bodyText,

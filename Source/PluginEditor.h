@@ -8,6 +8,7 @@
 #include "SD80LookAndFeel.h"
 #include "ParamLock.h"
 #include "CassetteDeck.h"
+#include "MidiRoll.h"
 
 class ModernEdirolSd80Editor : public juce::AudioProcessorEditor,
                                public juce::FileDragAndDropTarget,
@@ -150,6 +151,7 @@ private:
     juce::Label mfxWarn;
 
     CassetteDeck deck;
+    MidiRoll roll;
     juce::Label playerHelp, playerWarn;
 
     juce::Label demoTitle, demoHelp;
