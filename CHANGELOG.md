@@ -2,6 +2,26 @@
 
 All notable changes to **Modern Edirol SD-80** live here. Copy this file to the GitHub release notes when you push.
 
+## 1.5.4 — 2026-08-30
+
+MSVC: extra brace in the piano-roll timer (C2059 `else`). `build.bat` only — one log at `logs\build.log`. No wrapper bats, no copies at the project root.
+
+## 1.5.3 — 2026-08-30
+
+Cassette-reel app icon (`Assets/icon.png`) on the standalone, VST3 and taskbar. CMake `ICON_BIG` / `ICON_SMALL` plus BinaryData `setIcon`. Replaces the default JUCE / Windows icon.
+
+## 1.5.2 — 2026-08-30
+
+Piano-roll: empty until a tape is loaded; whole SMF on the strip; moving playhead; 16 distinct colours; keys light with sounding notes. Cassette and roll frames share the same inset.
+
+## 1.5.1 — 2026-08-30
+
+Windows **`build.bat`**: checks CMake/Git, always writes `build.log` (and `build_log.txt`), `BUILD_STATUS.txt`, and a stamped file under `logs\`. Failure keeps the window open — paste `build.log`. `01 Compile.bat` / `run.bat` call it. AU still macOS-only; CLAP is best-effort after VST3 + Standalone.
+
+## 1.5.0 — 2026-08-30
+
+PLAYER piano-roll under the cassette. One colour per instrument (SMF channel / Part A). Mute and solo on the mixer dim that colour. Empty bay shows a slow preview pattern so it is never a blank slab.
+
 ## 1.4.1 — 2026-08-29
 
 MSVC: `juce::MidiMessage::songSelect` is not in JUCE 9.0.1. DEMOS send Song Select as raw `F3 nn`.

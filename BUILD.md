@@ -12,20 +12,20 @@ JUCE is **GPL v3** unless you hold a commercial JUCE license.
 
 ## Windows (Visual Studio 2022)
 
-Double-click **`01 Compile.bat`**. It writes `build_log.txt` next to itself.
+Double-click **`build.bat`**. The window stays open. The only log is **`logs\build.log`** — paste that if it fails.
 
 ```bat
+build.bat
+:: or:
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release --target ModernEdirolSD80_VST3 ModernEdirolSD80_Standalone ModernEdirolSD80_CLAP
 ```
-
-`run.bat` is a shortcut to the same script.
 
 VST3 lands under `build/ModernEdirolSD80_artefacts/Release/VST3/`. Copy that bundle into your VST3 folder (usually `C:\Program Files\Common Files\VST3`). CLAP lands under `.../Release/CLAP/` (or the clap-juce-extensions copy path).
 
 **AU cannot be built on Windows.** Audio Units are an Apple format.
 
-echo JUCE 9.0.1. If you previously configured JUCE 8, delete the `build` folder once so CMake re-fetches.
+If you previously configured JUCE 8, delete the `build` folder once so CMake re-fetches **9.0.1**.
 
 ### CLAP
 
@@ -85,9 +85,14 @@ Source/SD80Sysex.h          DT1 / RQ1 / mode / MFX helpers (makeCc, not cc)
 Source/MidiThrottleQueue.h  20–50 ms FIFO
 Source/MidiFileImporter.h   SMF parser for mixer auto-setup
 Source/MidiPlayer.h         Cassette SMF playback (with loop)
+Source/MidiRoll.h           Colour piano-roll under the cassette
 Source/CassetteDeck.h       Empty / loaded / spinning cassette UI
 Source/Skin.h               9 palettes including As God Intended
 Source/ParamLock.h          Right-click lock wrappers
+Assets/icon.png             Cassette-reel icon (CMake ICON_BIG, 1024)
+Assets/icon-small.png       Same icon at 256 (CMake ICON_SMALL)
+Assets/icon.ico             Multi-size Windows icon
 github/                     Files for the GitHub repo homepage
 docs/MIDI-MAP.md            Address / CC reference
+build.bat                   One-click Windows compile (writes logs\build.log)
 ```

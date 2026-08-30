@@ -2,7 +2,7 @@
 
 VST3 / AU / CLAP / Standalone **MIDI controller** for the Edirol / Roland Studio Canvas **SD-80** (32-part, USB).
 
-**v1.4.1** by **[Crimson Redstone](https://crimsonredstone.bandcamp.com/)**. Freeware. If you'd like to support me, consider [purchasing my music](https://crimsonredstone.bandcamp.com/).
+**v1.5.4** by **[Crimson Redstone](https://crimsonredstone.bandcamp.com/)**. Freeware. If you'd like to support me, consider [purchasing my music](https://crimsonredstone.bandcamp.com/).
 
 This is an unofficial editor. Roland / Edirol names and the SD-80 sound set are their trademarks.
 
@@ -29,13 +29,14 @@ A JUCE 9 plugin that talks to the module over the **two** USB MIDI ports the SD-
 - Per-part reverb / chorus / MFX send in Deep Edit
 - **SEL** (Shift-click to multi-select) routes live MIDI onto those parts by default. OPTIONS can instead send host MIDI Part A / Part B as-played for a 16-channel piano roll.
 - Mute / Solo, MUTE ALL / UNMUTE ALL / UNSOLO ALL. Right-click a strip **name** to lock that instrument
-- **PLAYER** cassette deck with a **LOOP** tape button in the transport row
+- **PLAYER** cassette deck with a **LOOP** tape button and a **colour piano-roll** (one colour per instrument)
 - **DEMOS** tab — trigger the three internal songs (or the panel DEMO key if SysEx is ignored)
 - **OPTIONS**: full audio/MIDI device selector in standalone (greyed “Controlled by Host” in a DAW), USB ports, host MIDI route, module volume, Pull from SD-80, skins, shortcuts, emergency reset
 - Nine persistable skins, including **As God Intended** (SD-80 silver chassis)
 - Right-click lock on every adjuster
 - `.mesd80preset` snapshots
 - ASIO in the Windows standalone
+- Cassette-reel app icon on the standalone, VST3 and taskbar
 
 ## When in doubt: SYNC HARDWARE
 
@@ -58,9 +59,18 @@ cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release --target ModernEdirolSD80_VST3 ModernEdirolSD80_Standalone
 ```
 
-Or double-click `run.bat`. JUCE 9.0.1 and (on Windows) the Steinberg ASIO SDK are fetched at configure. Delete the `build` folder once if you previously fetched JUCE 8.
+Or double-click `build.bat`. It writes `logs\build.log` even when CMake fails. JUCE 9.0.1 and (on Windows) the Steinberg ASIO SDK are fetched at configure. Delete the `build` folder once if you previously fetched JUCE 8.
 
 Requires **CMake 3.22+**, a C++20 compiler, and Git. JUCE is **GPL v3** unless you have a commercial JUCE license — see [LICENSE](LICENSE).
+
+## FL Studio (ports 8 & 9)
+
+One VST3 cannot reliably present two host MIDI buses in FL Studio, so the plugin opens the SD-80 ports **directly**:
+
+1. Build and install the VST3.
+2. Load **Modern Edirol SD80** as a generator.
+3. OPTIONS → **Part A USB** / **Part B USB** → the two EDIROL SD-80 outputs.
+4. Optionally still assign FL Studio MIDI Out port 8 → SD-80 port 1 and port 9 → port 2 for the piano roll. Enable *Host MIDI mirrors Part A/B* if you want the wrapper to record the CC stream.
 
 ## Manual sources
 
