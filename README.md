@@ -1,5 +1,12 @@
 # Modern Edirol SD-80
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=LJgOhjn1Xi0" target="_blank">
+    <img src="https://img.shields.io/badge/▶_Watch_Demo_on_YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Video"/><br/>
+    <img src="https://img.youtube.com/vi/LJgOhjn1Xi0/maxresdefault.jpg" alt="Modern Edirol SD80 Showcase Video" width="50%" height="50%"/>
+  </a>
+</p>
+
 VST3 / AU / CLAP / Standalone **MIDI controller** for the Edirol / Roland Studio Canvas **SD-80** (32-part, USB).
 
 **v1.5.4** by **[Crimson Redstone](https://crimsonredstone.bandcamp.com/)**. Freeware. If you'd like to support me, consider [purchasing my music](https://crimsonredstone.bandcamp.com/).
