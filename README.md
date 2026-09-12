@@ -113,3 +113,4 @@ Therefore if you have any complaints, bug reports, or suggestions make sure to b
 
 ## Known Bugs:
 Nothing in the Demo tab works and you should not mess with it.
+Midi through DAW has a sound discrepency compared to midi loaded via the player.
