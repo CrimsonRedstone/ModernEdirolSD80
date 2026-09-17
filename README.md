@@ -31,8 +31,6 @@ Patch names, bank MSB/LSB, SysEx addresses, checksum, MFX type list and CC numbe
 
 Model ID `00H 48H` (shared with the SD-90). Roland checksum: `128 - (sum % 128)`.
 
-A GitHub-ready copy of this documentation lives in [`github/`](github/README.md) (README, CHANGELOG, BUILD, HARDWARE, LICENSE). Paste those files at the root of the GitHub repo when you push.
-
 ## What it does
 
 - 32 channel strips (Part A 1-16 / Part B 17-32)
@@ -53,7 +51,6 @@ A GitHub-ready copy of this documentation lives in [`github/`](github/README.md)
 - Right-click any fader, knob, toggle or menu to **lock** it. Locks survive patch, MIDI import and presets
 - Session total recall via `getStateInformation` / `setStateInformation`
 - `.mesd80preset` XML snapshots
-- Standalone **ASIO** (Windows) plus WASAPI. No JUCE Options/Settings chrome — audio lives in OPTIONS. Cassette-reel app icon on the exe / VST3 / taskbar. Closing the standalone (X or Alt+F4) silences the module first so a note cannot stick.
 
 ## Standalone ASIO
 
