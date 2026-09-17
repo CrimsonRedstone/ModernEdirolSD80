@@ -43,6 +43,7 @@ public:
         loaded = true;
         playing = false;
         panic = false;
+        endedNaturally = false;
         name = file.getFileName();
         path = file;
         nextIndex = 0;
@@ -50,12 +51,13 @@ public:
         return true;
     }
 
-    void play()  { juce::ScopedLock sl(lock); if (loaded) playing = true; }
+    void play()  { juce::ScopedLock sl(lock); if (loaded) { playing = true; endedNaturally = false; } }
     void pause()
     {
         juce::ScopedLock sl(lock);
         playing = false;
         panic = true;
+        endedNaturally = false;
     }
     void stop()
     {
@@ -64,6 +66,37 @@ public:
         positionSec = 0.0;
         nextIndex = 0;
         panic = true;
+        endedNaturally = false;
+    }
+
+    void unload()
+    {
+        juce::ScopedLock sl(lock);
+        playing = false;
+        loaded = false;
+        sequence.clear();
+        notes.clear();
+        name.clear();
+        path = {};
+        lengthSec = 0.0;
+        positionSec = 0.0;
+        nextIndex = 0;
+        panic = true;
+        endedNaturally = false;
+        ++loadGeneration;
+    }
+
+    void setOutputPort(MidiPort p) { juce::ScopedLock sl(lock); emitPort = p; }
+    MidiPort getOutputPort() const { juce::ScopedLock sl(lock); return emitPort; }
+
+    // True once after the SMF reached its end (not pause/stop).
+    bool consumeNaturalEnd()
+    {
+        juce::ScopedLock sl(lock);
+        if (! endedNaturally)
+            return false;
+        endedNaturally = false;
+        return true;
     }
 
     void setLooping(bool v) { juce::ScopedLock sl(lock); looping = v; }
@@ -103,8 +136,8 @@ public:
         {
             for (int ch = 1; ch <= 16; ++ch)
             {
-                emit(juce::MidiMessage::allNotesOff(ch), 0, MidiPort::A);
-                emit(juce::MidiMessage::controllerEvent(ch, 123, 0), 0, MidiPort::A);
+                emit(juce::MidiMessage::allNotesOff(ch), 0, emitPort);
+                emit(juce::MidiMessage::controllerEvent(ch, 123, 0), 0, emitPort);
             }
             panic = false;
         }
@@ -129,7 +162,7 @@ public:
                 sample = juce::jlimit(0, numSamples - 1, sample);
                 auto msg = ev->message;
                 if (! msg.isMetaEvent())
-                    emit(msg, sample, MidiPort::A);
+                    emit(msg, sample, emitPort);
             }
             ++nextIndex;
         }
@@ -147,6 +180,7 @@ public:
                 playing = false;
                 positionSec = lengthSec;
                 panic = true;
+                endedNaturally = true;
             }
         }
     }
@@ -204,5 +238,7 @@ private:
     bool loaded { false };
     bool panic { false };
     bool looping { false };
+    bool endedNaturally { false };
+    MidiPort emitPort { MidiPort::A };
     mutable juce::CriticalSection lock;
 };

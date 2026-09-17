@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <functional>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Skin.h"
 
@@ -8,7 +9,7 @@ class CassetteDeck : public juce::Component, private juce::Timer
 {
 public:
     std::function<void()> onPlay, onPause, onStop, onLoad, onApplySetup;
-    std::function<void(bool)> onLoop;
+    std::function<void()> onLoop;
 
     CassetteDeck()
     {
@@ -16,7 +17,7 @@ public:
         pause.setButtonText("PAUSE");
         stop.setButtonText("STOP");
         loop.setButtonText("LOOP");
-        loop.setClickingTogglesState(true);
+        loop.setClickingTogglesState(false);
         load.setButtonText("LOAD TAPE");
         apply.setButtonText("Send setup to SD-80");
         for (auto* b : { &play, &pause, &stop, &loop, &load, &apply })
@@ -28,7 +29,36 @@ public:
         startTimerHz(60);
     }
 
-    void setLooping(bool v) { loop.setToggleState(v, juce::dontSendNotification); }
+    void setLooping(bool v)
+    {
+        loop.setButtonText("LOOP");
+        loop.setToggleState(v, juce::dontSendNotification);
+        loop.setTooltip("Repeat the cassette when it ends");
+    }
+
+    // Playlist armed: 0 off, 1 whole playlist, 2 this song.
+    void setPlaylistLoopVisual(int mode)
+    {
+        if (mode == 1)
+        {
+            loop.setButtonText("LOOP ALL");
+            loop.setToggleState(true, juce::dontSendNotification);
+            loop.setTooltip("Whole playlist repeats. Click for LOOP 1 (this song).");
+        }
+        else if (mode == 2)
+        {
+            loop.setButtonText("LOOP 1");
+            loop.setToggleState(true, juce::dontSendNotification);
+            loop.setTooltip("This song repeats. Click to turn looping off.");
+        }
+        else
+        {
+            loop.setButtonText("LOOP");
+            loop.setToggleState(false, juce::dontSendNotification);
+            loop.setTooltip("Click to loop the whole playlist.");
+        }
+    }
+
     bool isLooping() const { return loop.getToggleState(); }
 
     juce::TextButton play, pause, stop, loop, load, apply;
@@ -148,7 +178,7 @@ private:
             if (b == &owner->stop && owner->onStop) owner->onStop();
             if (b == &owner->load && owner->onLoad) owner->onLoad();
             if (b == &owner->apply && owner->onApplySetup) owner->onApplySetup();
-            if (b == &owner->loop && owner->onLoop) owner->onLoop(owner->loop.getToggleState());
+            if (b == &owner->loop && owner->onLoop) owner->onLoop();
         }
     } buttonRelay;
 

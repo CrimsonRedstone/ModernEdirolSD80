@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_data_structures/juce_data_structures.h>
@@ -43,6 +44,8 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     MidiPlayerEngine player;
+    MidiPlayerEngine playlistA;
+    MidiPlayerEngine playlistB;
 
     juce::StringArray midiOutputNames() const;
     juce::StringArray midiInputNames() const;
@@ -60,7 +63,7 @@ public:
     void enqueueMfxBlock();
     void syncHardwarePush();
     void requestHardwareDump();
-    void applyMidiFile(const juce::File&);
+    void applyMidiFile(const juce::File&, int group = -1);
     void setGeneratorMode(sd80::GeneratorMode m);
     sd80::GeneratorMode getGeneratorMode() const;
 
@@ -92,10 +95,29 @@ public:
     void unsoloAll();
     void autoDetectUsbPorts();
     void factoryResetHardware();
+    void silenceForQuit();
     void resetEffectsToDefault();
     void pullFromHardware();
-    void playInternalDemo(int song0stop1to3);
     void sendMasterVolume();
+    void playlistAdd(const juce::File&);
+    void playlistPlay();
+    void playlistPause();
+    void playlistStop();
+    void playlistClear();
+    void disarmPlaylist();
+    void playlistService();
+    bool playlistIsActive() const { return playlistActive.load(); }
+    bool playlistIsArmed() const;
+    int getPlaylistLoop() const { return playlistLoopMode.load(); }
+    int cyclePlaylistLoop();
+    MidiPlayerEngine& displayEngine();
+    int displayPartGroup();
+    bool playlistSlotLoaded(int side) const;
+    bool playlistSlotPlaying(int side) const;
+    bool playlistSlotSpent(int side) const;
+    juce::String playlistSlotName(int side) const;
+    juce::StringArray playlistQueueNames() const;
+    juce::String playlistStatus() const;
     bool consumeDumpDirty() { return dumpDirty.exchange(false); }
     bool skipFxResetWarning() const { return skipFxWarn; }
     void setSkipFxResetWarning(bool v);
@@ -149,6 +171,21 @@ private:
     int skinIndex { 0 };
     bool skipFxWarn { false };
     juce::ApplicationProperties appProps;
+
+    juce::Array<juce::File> playlistQueue;
+    juce::Array<juce::File> playlistLibrary;
+    juce::CriticalSection playlistLock;
+    std::atomic<bool> playlistActive { false };
+    std::atomic<bool> playlistOwnsTransport { false };
+    std::atomic<bool> playlistPaused { false };
+    std::atomic<int> playlistLoopMode { 0 }; // 0 off, 1 whole playlist, 2 this song
+    std::atomic<int> playlistNeedArm { 0 }; // bit0=A, bit1=B
+    std::atomic<bool> playlistNeedPlay { false };
+    std::atomic<bool> playlistSpentA { false };
+    std::atomic<bool> playlistSpentB { false };
+    void playlistArm(int side);
+    void applyPlaylistLoopToEngines();
+    void refillPlaylistQueueUnlocked();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ModernEdirolSd80Processor)
 };

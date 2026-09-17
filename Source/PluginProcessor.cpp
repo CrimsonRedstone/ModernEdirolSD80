@@ -43,7 +43,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ModernEdirolSd80Processor::c
     addBool("mfxCOn", "MFX C", false);
     addBool("hostMirrorA", "Host MIDI mirrors Part A", true);
     addBool("hostMirrorB", "Host MIDI mirrors Part B", false);
-    addInt("hostRoute", "Host MIDI route", 0, 2, 0); // 0=Follow SEL, 1=Part A as-played, 2=Part B as-played
+    addInt("hostRoute", "Host MIDI route", 0, 2, 1); // 0=Follow SEL, 1=Part A as-played, 2=Part B as-played
     for (int slot = 0; slot < 3; ++slot)
         for (int k = 0; k < 4; ++k)
             addInt(mfxParamId(slot, k),
@@ -101,6 +101,8 @@ ModernEdirolSd80Processor::ModernEdirolSd80Processor()
     opt.folderName = "CrimsonRedstone";
     appProps.setStorageParameters(opt);
     restoreAppSettings();
+    playlistA.setOutputPort(MidiPort::A);
+    playlistB.setOutputPort(MidiPort::B);
     autoDetectUsbPorts();
     requestHardwareDump();
 
@@ -299,61 +301,351 @@ void ModernEdirolSd80Processor::autoDetectUsbPorts()
     }
 }
 
-void ModernEdirolSd80Processor::playInternalDemo(int song0stop1to3)
-{
-    // Demos must not sit behind the USB throttle — send immediately on both ports.
-    auto sendNow = [this](const juce::MidiMessage& m)
-    {
-        const juce::ScopedLock sl(deviceLock);
-        if (midiOutA) midiOutA->sendMessageNow(m);
-        if (midiOutB) midiOutB->sendMessageNow(m);
-    };
-
-    {
-        const juce::ScopedLock sl(deviceLock);
-        if (midiOutA == nullptr && midiOutB == nullptr)
-        {
-            lastImportSummary = "DEMOS: Part A USB / Part B USB are not open. Pick them in OPTIONS, then try again.";
-            if (onImportFinished)
-                juce::MessageManager::callAsync([this] { if (onImportFinished) onImportFinished(); });
-            return;
-        }
-    }
-
-    sendNow(nativeOn());
-
-    if (song0stop1to3 <= 0)
-    {
-        sendNow(juce::MidiMessage::midiStop());
-        sendNow(mmcStop());
-        sendNow(demoPlay(0));
-        sendNow(demoPlayAlt(0));
-        for (int ch = 1; ch <= 16; ++ch)
-        {
-            sendNow(juce::MidiMessage::allNotesOff(ch));
-            sendNow(juce::MidiMessage::allSoundOff(ch));
-        }
-        lastImportSummary = "Demo stopped (MIDI Stop + Native SysEx + All Notes Off).";
-    }
-    else
-    {
-        const int song = juce::jlimit(1, 3, song0stop1to3);
-        sendNow(juce::MidiMessage::midiStop());
-        sendNow(demoPlay(song));
-        sendNow(demoPlayAlt(song));
-        sendNow(songSelect(song - 1));
-        sendNow(juce::MidiMessage::midiStart());
-        sendNow(mmcPlay());
-        lastImportSummary = "Demo " + juce::String(song)
-            + " sent immediately (Native SysEx + Song Select + MIDI Start + MMC). If you hear nothing, press the module DEMO key — the Owner's Manual p.13 path.";
-    }
-    if (onImportFinished)
-        juce::MessageManager::callAsync([this] { if (onImportFinished) onImportFinished(); });
-}
-
 void ModernEdirolSd80Processor::sendMasterVolume()
 {
     throttle.push(gmMasterVolume(paramInt("masterVol", 127)), MidiPort::Both);
+}
+
+void ModernEdirolSd80Processor::refillPlaylistQueueUnlocked()
+{
+    playlistQueue.clear();
+    for (int i = 0; i < playlistLibrary.size(); ++i)
+        playlistQueue.add(playlistLibrary.getReference(i));
+}
+
+void ModernEdirolSd80Processor::applyPlaylistLoopToEngines()
+{
+    const bool song = playlistLoopMode.load() == 2;
+    if (! song)
+    {
+        playlistA.setLooping(false);
+        playlistB.setLooping(false);
+        return;
+    }
+    if (playlistA.isPlaying())
+    {
+        playlistA.setLooping(true);
+        playlistB.setLooping(false);
+    }
+    else if (playlistB.isPlaying())
+    {
+        playlistB.setLooping(true);
+        playlistA.setLooping(false);
+    }
+    else
+    {
+        const bool a = playlistA.isLoaded() && ! playlistSpentA.load();
+        playlistA.setLooping(a);
+        playlistB.setLooping(! a && playlistB.isLoaded() && ! playlistSpentB.load());
+    }
+}
+
+void ModernEdirolSd80Processor::playlistArm(int side)
+{
+    side = side ? 1 : 0;
+    juce::File f;
+    bool didRefill = false;
+    for (;;)
+    {
+        const juce::ScopedLock sl(playlistLock);
+        if (playlistQueue.isEmpty() && ! didRefill && playlistLoopMode.load() == 1
+            && playlistLibrary.size() > 0)
+        {
+            refillPlaylistQueueUnlocked();
+            didRefill = true;
+        }
+        if (playlistQueue.isEmpty())
+        {
+            if (side)
+            {
+                playlistB.unload();
+                playlistSpentB.store(true);
+            }
+            else
+            {
+                playlistA.unload();
+                playlistSpentA.store(true);
+            }
+            return;
+        }
+        f = playlistQueue.getFirst();
+        playlistQueue.remove(0);
+        if (f.existsAsFile())
+            break;
+    }
+    applyMidiFile(f, side);
+    if (side)
+    {
+        playlistB.setOutputPort(MidiPort::B);
+        playlistB.load(f);
+        playlistSpentB.store(false);
+    }
+    else
+    {
+        playlistA.setOutputPort(MidiPort::A);
+        playlistA.load(f);
+        playlistSpentA.store(false);
+    }
+    applyPlaylistLoopToEngines();
+}
+
+void ModernEdirolSd80Processor::playlistAdd(const juce::File& f)
+{
+    if (! (f.hasFileExtension(".mid") || f.hasFileExtension(".midi")))
+        return;
+    if (! f.existsAsFile())
+        return;
+    {
+        const juce::ScopedLock sl(playlistLock);
+        playlistLibrary.add(f);
+        playlistQueue.add(f);
+    }
+    playlistOwnsTransport.store(true);
+    player.stop();
+    if (! playlistA.isLoaded())
+        playlistArm(0);
+    if (! playlistB.isLoaded())
+        playlistArm(1);
+}
+
+void ModernEdirolSd80Processor::playlistPlay()
+{
+    player.stop();
+    playlistOwnsTransport.store(true);
+
+    if (playlistPaused.load())
+    {
+        const bool aMid = playlistA.isLoaded() && ! playlistSpentA.load()
+            && playlistA.getPosition() > 0.05
+            && playlistA.getPosition() + 0.08 < playlistA.getLength();
+        const bool bMid = playlistB.isLoaded() && ! playlistSpentB.load()
+            && playlistB.getPosition() > 0.05
+            && playlistB.getPosition() + 0.08 < playlistB.getLength();
+        if (aMid || bMid)
+        {
+            playlistPaused.store(false);
+            playlistActive.store(true);
+            applyPlaylistLoopToEngines();
+            if (aMid)
+                playlistA.play();
+            else
+                playlistB.play();
+            return;
+        }
+        playlistPaused.store(false);
+    }
+
+    if (! playlistA.isLoaded() && ! playlistB.isLoaded())
+    {
+        {
+            const juce::ScopedLock sl(playlistLock);
+            refillPlaylistQueueUnlocked();
+        }
+        playlistArm(0);
+        playlistArm(1);
+    }
+    playlistA.stop();
+    playlistB.stop();
+    if (! playlistA.isLoaded() && ! playlistB.isLoaded())
+        return;
+    playlistActive.store(true);
+    playlistPaused.store(false);
+    applyPlaylistLoopToEngines();
+    if (playlistA.isLoaded())
+    {
+        playlistSpentA.store(false);
+        playlistA.play();
+    }
+    else
+    {
+        playlistSpentB.store(false);
+        playlistB.play();
+    }
+}
+
+void ModernEdirolSd80Processor::playlistPause()
+{
+    if (! playlistA.isPlaying() && ! playlistB.isPlaying())
+        return;
+    playlistActive.store(false);
+    playlistPaused.store(true);
+    if (playlistA.isPlaying())
+        playlistA.pause();
+    if (playlistB.isPlaying())
+        playlistB.pause();
+}
+
+void ModernEdirolSd80Processor::playlistStop()
+{
+    playlistActive.store(false);
+    playlistPaused.store(false);
+    playlistA.stop();
+    playlistB.stop();
+}
+
+void ModernEdirolSd80Processor::disarmPlaylist()
+{
+    playlistStop();
+    playlistOwnsTransport.store(false);
+}
+
+void ModernEdirolSd80Processor::playlistClear()
+{
+    playlistStop();
+    playlistOwnsTransport.store(false);
+    playlistLoopMode.store(0);
+    {
+        const juce::ScopedLock sl(playlistLock);
+        playlistQueue.clear();
+        playlistLibrary.clear();
+    }
+    playlistA.unload();
+    playlistB.unload();
+    playlistSpentA.store(true);
+    playlistSpentB.store(true);
+    applyPlaylistLoopToEngines();
+}
+
+void ModernEdirolSd80Processor::playlistService()
+{
+    if (! playlistOwnsTransport.load())
+    {
+        playlistNeedArm.store(0);
+        playlistNeedPlay.store(false);
+        return;
+    }
+    if (! playlistA.isLoaded())
+    {
+        playlistArm(0);
+        playlistNeedArm.fetch_and(~1);
+    }
+    if (! playlistB.isLoaded())
+    {
+        playlistArm(1);
+        playlistNeedArm.fetch_and(~2);
+    }
+
+    const int need = playlistNeedArm.exchange(0);
+    if ((need & 1) != 0)
+        playlistArm(0);
+    if ((need & 2) != 0)
+        playlistArm(1);
+
+    if (playlistNeedPlay.exchange(false) && playlistOwnsTransport.load())
+    {
+        if (! playlistA.isPlaying() && ! playlistB.isPlaying())
+        {
+            applyPlaylistLoopToEngines();
+            if (playlistA.isLoaded() && ! playlistSpentA.load())
+            {
+                playlistActive.store(true);
+                playlistA.play();
+            }
+            else if (playlistB.isLoaded() && ! playlistSpentB.load())
+            {
+                playlistActive.store(true);
+                playlistB.play();
+            }
+        }
+    }
+}
+
+bool ModernEdirolSd80Processor::playlistIsArmed() const
+{
+    if (! playlistOwnsTransport.load())
+        return false;
+    if (playlistA.isLoaded() || playlistB.isLoaded())
+        return true;
+    const juce::ScopedLock sl(playlistLock);
+    return playlistQueue.size() > 0 || playlistLibrary.size() > 0;
+}
+
+int ModernEdirolSd80Processor::cyclePlaylistLoop()
+{
+    int m = playlistLoopMode.load();
+    m = (m + 1) % 3;
+    playlistLoopMode.store(m);
+    applyPlaylistLoopToEngines();
+    return m;
+}
+
+MidiPlayerEngine& ModernEdirolSd80Processor::displayEngine()
+{
+    if (playlistOwnsTransport.load())
+    {
+        if (playlistB.isPlaying())
+            return playlistB;
+        if (playlistA.isPlaying())
+            return playlistA;
+        if (playlistA.isLoaded() && ! playlistSpentA.load())
+            return playlistA;
+        if (playlistB.isLoaded() && ! playlistSpentB.load())
+            return playlistB;
+        if (playlistB.isLoaded())
+            return playlistB;
+        if (playlistA.isLoaded())
+            return playlistA;
+    }
+    return player;
+}
+
+int ModernEdirolSd80Processor::displayPartGroup()
+{
+    return (&displayEngine() == &playlistB) ? 1 : 0;
+}
+
+bool ModernEdirolSd80Processor::playlistSlotLoaded(int side) const
+{
+    return side ? playlistB.isLoaded() : playlistA.isLoaded();
+}
+
+bool ModernEdirolSd80Processor::playlistSlotPlaying(int side) const
+{
+    return side ? playlistB.isPlaying() : playlistA.isPlaying();
+}
+
+bool ModernEdirolSd80Processor::playlistSlotSpent(int side) const
+{
+    return side ? playlistSpentB.load() : playlistSpentA.load();
+}
+
+juce::String ModernEdirolSd80Processor::playlistSlotName(int side) const
+{
+    return side ? playlistB.getName() : playlistA.getName();
+}
+
+juce::StringArray ModernEdirolSd80Processor::playlistQueueNames() const
+{
+    const juce::ScopedLock sl(playlistLock);
+    juce::StringArray names;
+    for (int i = 0; i < playlistQueue.size(); ++i)
+        names.add(playlistQueue.getReference(i).getFileName());
+    return names;
+}
+
+juce::String ModernEdirolSd80Processor::playlistStatus() const
+{
+    juce::String loop;
+    const int mode = playlistLoopMode.load();
+    if (mode == 1)
+        loop = "  |  LOOP ALL";
+    else if (mode == 2)
+        loop = "  |  LOOP 1";
+
+    if (playlistActive.load())
+    {
+        if (playlistA.isPlaying())
+            return "Part A playing  -  Part B is next (or loading)" + loop;
+        if (playlistB.isPlaying())
+            return "Part B playing  -  next file loads onto Part A" + loop;
+        return "Playlist running" + loop;
+    }
+    if (playlistPaused.load())
+        return "Paused" + loop;
+    if (playlistA.isLoaded() || playlistB.isLoaded() || playlistQueue.size() > 0
+        || playlistLibrary.size() > 0)
+        return "Armed. Press PLAY to start Part A." + loop;
+    return "Drop .mid files. First two arm Part A then Part B.";
 }
 
 void ModernEdirolSd80Processor::pullFromHardware()
@@ -425,6 +717,27 @@ void ModernEdirolSd80Processor::factoryResetHardware()
     syncHardwarePush();
 }
 
+void ModernEdirolSd80Processor::silenceForQuit()
+{
+    player.stop();
+    playlistStop();
+
+    const juce::ScopedLock sl(deviceLock);
+    juce::MidiOutput* ports[2] = { midiOutA.get(), midiOutB.get() };
+    for (int i = 0; i < 2; ++i)
+    {
+        juce::MidiOutput* out = ports[i];
+        if (out == nullptr)
+            continue;
+        for (int ch = 1; ch <= 16; ++ch)
+        {
+            out->sendMessageNow(juce::MidiMessage::allNotesOff(ch));
+            out->sendMessageNow(juce::MidiMessage::allSoundOff(ch));
+            out->sendMessageNow(juce::MidiMessage::controllerEvent(ch, 121, 0));
+        }
+    }
+}
+
 bool ModernEdirolSd80Processor::isLocked(const juce::String& paramId) const
 {
     return lockedIds.contains(paramId);
@@ -468,6 +781,7 @@ void ModernEdirolSd80Processor::persistAppSettings()
         f->setValue("skin", skinIndex);
         f->setValue("locks", lockedIds.joinIntoString(","));
         f->setValue("skipFxWarn", skipFxWarn);
+        f->setValue("routeAsPlayed", true);
         if (auto xml = apvts.copyState().createXml())
             f->setValue("sessionXml", xml->toString());
         f->saveIfNeeded();
@@ -496,6 +810,17 @@ void ModernEdirolSd80Processor::restoreAppSettings()
                     suppressOutgoing = false;
                 }
             }
+        }
+        // v1.4 stored Follow SEL as 0 (including old "Part A" sessions).
+        // Once per settings file, put Live MIDI back on Part A as-played.
+        if (! f->getBoolValue("routeAsPlayed", false))
+        {
+            if (paramInt("hostRoute", 0) == 0)
+                setParamInt("hostRoute", 1);
+            f->setValue("routeAsPlayed", true);
+            if (auto xml = apvts.copyState().createXml())
+                f->setValue("sessionXml", xml->toString());
+            f->saveIfNeeded();
         }
     }
 }
@@ -674,56 +999,77 @@ void ModernEdirolSd80Processor::requestHardwareDump()
     }
 }
 
-void ModernEdirolSd80Processor::applyMidiFile(const juce::File& file)
+void ModernEdirolSd80Processor::applyMidiFile(const juce::File& file, int group)
 {
     const auto parsed = parseMidiFileForSd80(file);
     lastImportSummary = parsed.summary;
     suppressOutgoing = true;
 
-    for (int i = 0; i < 32; ++i)
-    {
-        const auto& ip = parsed.parts[(size_t) i];
-        if (! ip.used)
-            continue;
+    const bool oneGroup = (group == 0 || group == 1);
+    const int destBase = oneGroup ? group * 16 : 0;
 
+    auto applyPart = [this](int dest, const ImportedPart& ip)
+    {
+        if (! ip.used)
+            return;
         const bool drumMsb = (ip.msb == kGm2DrumMsb || ip.msb == 86 || ip.msb >= 104);
-        setParamInt(pid(i, "msb"), ip.msb);
-        setParamInt(pid(i, "lsb"), ip.lsb);
-        setParamInt(pid(i, "pc"),  ip.pc);
-        setParamInt(pid(i, "drum"), drumMsb ? 1 : 0);
-        setParamInt(pid(i, "map"), (int) mapFromInstMsb(ip.msb));
-        setParamInt(pid(i, "vol"), ip.volume);
-        setParamInt(pid(i, "pan"), ip.pan);
-        setParamInt(pid(i, "rev"), ip.reverb);
-        setParamInt(pid(i, "cho"), ip.chorus);
-        if (! isLocked(pid(i, "msb")) && ! isLocked(pid(i, "pc")) && ! isLocked(pid(i, "lsb")))
-            enqueuePartPatch(i);
-        enqueuePartMix(i);
+        setParamInt(pid(dest, "msb"), ip.msb);
+        setParamInt(pid(dest, "lsb"), ip.lsb);
+        setParamInt(pid(dest, "pc"),  ip.pc);
+        setParamInt(pid(dest, "drum"), drumMsb ? 1 : 0);
+        setParamInt(pid(dest, "map"), (int) mapFromInstMsb(ip.msb));
+        setParamInt(pid(dest, "vol"), ip.volume);
+        setParamInt(pid(dest, "pan"), ip.pan);
+        setParamInt(pid(dest, "rev"), ip.reverb);
+        setParamInt(pid(dest, "cho"), ip.chorus);
+        if (! isLocked(pid(dest, "msb")) && ! isLocked(pid(dest, "pc")) && ! isLocked(pid(dest, "lsb")))
+            enqueuePartPatch(dest);
+        enqueuePartMix(dest);
+    };
+
+    if (oneGroup)
+    {
+        for (int ch = 0; ch < 16; ++ch)
+        {
+            ImportedPart ip = parsed.parts[(size_t) ch];
+            if (! ip.used && parsed.parts[(size_t) (ch + 16)].used)
+                ip = parsed.parts[(size_t) (ch + 16)];
+            applyPart(destBase + ch, ip);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < 32; ++i)
+            applyPart(i, parsed.parts[(size_t) i]);
+
+        setParamInt("reverbType", 4);
+        setParamInt("reverbTime", 64);
+        setParamInt("chorusType", 2);
+        setParamInt("chorusRate", 3);
+        setParamInt("chorusDepth", 19);
+        setParamInt("chorusFeedback", 8);
+        setParamInt("mfxAType", 0);
+        setParamInt("mfxBType", 0);
+        setParamInt("mfxCType", 0);
+        for (int slot = 0; slot < 3; ++slot)
+            for (int k = 0; k < 4; ++k)
+                setParamInt(mfxParamId(slot, k), 64);
+        for (int i = 0; i < 32; ++i)
+            if (! parsed.parts[(size_t) i].used)
+            {
+                setParamInt(pid(i, "rev"), 40);
+                setParamInt(pid(i, "cho"), 0);
+                setParamInt(pid(i, "mfx"), 0);
+            }
     }
 
-    // Unlocked global FX return to defaults (SMF rarely carries MFX type).
-    setParamInt("reverbType", 4);
-    setParamInt("reverbTime", 64);
-    setParamInt("chorusType", 2);
-    setParamInt("chorusRate", 3);
-    setParamInt("chorusDepth", 19);
-    setParamInt("chorusFeedback", 8);
-    setParamInt("mfxAType", 0);
-    setParamInt("mfxBType", 0);
-    setParamInt("mfxCType", 0);
-    for (int slot = 0; slot < 3; ++slot)
-        for (int k = 0; k < 4; ++k)
-            setParamInt(mfxParamId(slot, k), 64);
-    for (int i = 0; i < 32; ++i)
-        if (! parsed.parts[(size_t) i].used)
-        {
-            setParamInt(pid(i, "rev"), 40);
-            setParamInt(pid(i, "cho"), 0);
-            setParamInt(pid(i, "mfx"), 0);
-        }
-
     suppressOutgoing = false;
-    syncHardwarePush();
+    if (! oneGroup)
+    {
+        syncHardwarePush();
+        // Mixer drop is the FL piano-roll setup path: keep channels as written.
+        setParamInt("hostRoute", 1);
+    }
 
     if (onImportFinished)
         juce::MessageManager::callAsync([this] { if (onImportFinished) onImportFinished(); });
@@ -783,6 +1129,7 @@ void ModernEdirolSd80Processor::getStateInformation(juce::MemoryBlock& destData)
     xml->setAttribute("inB", inBName);
     xml->setAttribute("skin", skinIndex);
     xml->setAttribute("locks", lockedIds.joinIntoString(","));
+    xml->setAttribute("routeAsPlayed", 1);
     copyXmlToBinary(*xml, destData);
 }
 
@@ -806,6 +1153,8 @@ void ModernEdirolSd80Processor::setStateInformation(const void* data, int sizeIn
     lockedIds = juce::StringArray::fromTokens(xml->getStringAttribute("locks"), ",", "");
     lockedIds.trim();
     lockedIds.removeEmptyStrings();
+    if (xml->getIntAttribute("routeAsPlayed", 0) == 0 && paramInt("hostRoute", 0) == 0)
+        setParamInt("hostRoute", 1);
     persistAppSettings();
     if (outAName.isNotEmpty())
         openNamedOutput(midiOutA, outAName, outAIndex, outAName);
@@ -950,7 +1299,7 @@ void ModernEdirolSd80Processor::processBlock(juce::AudioBuffer<float>& buffer, j
     auto mask = selectedMask.load();
     if (mask == 0)
         mask = 1u << selectedPart.load();
-    const int hostRoute = paramInt("hostRoute", 0);
+    const int hostRoute = paramInt("hostRoute", 1);
 
     for (const auto metadata : incoming)
     {
@@ -1012,6 +1361,51 @@ void ModernEdirolSd80Processor::processBlock(juce::AudioBuffer<float>& buffer, j
                               return;
                       sendQueued({ m, port }, &midi, sample);
                   });
+
+    auto emitPl = [this, &midi](const juce::MidiMessage& m, int sample, MidiPort port)
+    {
+        int part = 0;
+        if (m.getChannel() >= 1)
+            part = (port == MidiPort::B ? 16 : 0) + (m.getChannel() - 1);
+        if (m.isNoteOnOrOff() || m.isPitchWheel())
+            if (isPartSilenced(juce::jlimit(0, 31, part)))
+                return;
+        sendQueued({ m, port }, &midi, sample);
+    };
+    playlistA.render(currentSampleRate, buffer.getNumSamples(), emitPl);
+    if (playlistActive.load() && playlistA.consumeNaturalEnd())
+    {
+        playlistSpentA.store(true);
+        playlistA.setLooping(false);
+        if (playlistB.isLoaded() && ! playlistSpentB.load())
+        {
+            playlistB.play();
+            if (playlistLoopMode.load() == 2)
+                playlistB.setLooping(true);
+        }
+        else if (playlistLoopMode.load() == 1)
+            playlistNeedPlay.store(true);
+        else
+            playlistActive.store(false);
+        playlistNeedArm.fetch_or(1);
+    }
+    playlistB.render(currentSampleRate, buffer.getNumSamples(), emitPl);
+    if (playlistActive.load() && playlistB.consumeNaturalEnd())
+    {
+        playlistSpentB.store(true);
+        playlistB.setLooping(false);
+        if (playlistA.isLoaded() && ! playlistSpentA.load())
+        {
+            playlistA.play();
+            if (playlistLoopMode.load() == 2)
+                playlistA.setLooping(true);
+        }
+        else if (playlistLoopMode.load() == 1)
+            playlistNeedPlay.store(true);
+        else
+            playlistActive.store(false);
+        playlistNeedArm.fetch_or(2);
+    }
 
     QueuedMidi q;
     int guard = 0;
@@ -1096,6 +1490,8 @@ void ModernEdirolSd80Processor::timerCallback()
         persistTicker = 0;
         persistAppSettings();
     }
+
+    playlistService();
 }
 
 void ModernEdirolSd80Processor::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)

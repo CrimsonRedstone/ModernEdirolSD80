@@ -2,6 +2,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
@@ -9,6 +10,7 @@
 #include "ParamLock.h"
 #include "CassetteDeck.h"
 #include "MidiRoll.h"
+#include "PlaylistDeck.h"
 
 class ModernEdirolSd80Editor : public juce::AudioProcessorEditor,
                                public juce::FileDragAndDropTarget,
@@ -29,7 +31,7 @@ public:
     void fileDragExit(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray& files, int, int) override;
 
-    enum class Tab { Mixer, Player, Demos, Options };
+    enum class Tab { Mixer, Player, Playlist, Options };
 
 private:
     void timerCallback() override;
@@ -56,7 +58,12 @@ private:
     void showChorusMenu();
     void loadPlayerFile();
     void updatePlayerUi();
+    void updatePlaylistUi();
+    void addPlaylistFiles();
     void updateFxLabels();
+    void popPianoRoll(bool fullScreen);
+    void dockPianoRoll();
+    void syncRollChrome();
     void confirmDanger(const juce::String& title, const juce::String& body,
                        bool requireSure, bool showDontShow,
                        std::function<void(bool dontShow)> onProceed);
@@ -74,12 +81,12 @@ private:
     juce::TextButton partBButton { "PART B  17-32" };
     juce::TextButton tabMixer { "MIXER" };
     juce::TextButton tabPlayer { "PLAYER" };
-    juce::TextButton tabDemos { "DEMOS" };
+    juce::TextButton tabPlaylist { "PLAYLIST" };
     juce::TextButton tabOptions { "OPTIONS" };
     juce::TextButton savePreset { "Save preset" };
     juce::TextButton loadPreset { "Load preset" };
 
-    juce::Component mixerPage, playerPage, demoPage, optionsPage;
+    juce::Component mixerPage, playerPage, playlistPage, optionsPage;
     juce::Viewport optionsView;
     juce::Component optionsInner;
 
@@ -153,9 +160,102 @@ private:
     CassetteDeck deck;
     MidiRoll roll;
     juce::Label playerHelp, playerWarn;
+    juce::Label rollAwayLabel;
+    juce::TextButton rollDockBtn { "DOCK PIANO ROLL" };
 
-    juce::Label demoTitle, demoHelp;
-    juce::TextButton demo1 { "Demo 1" }, demo2 { "Demo 2" }, demo3 { "Demo 3" }, demoStop { "Stop demo" };
+    class PianoRollWindow : public juce::DocumentWindow
+    {
+    public:
+        explicit PianoRollWindow(ModernEdirolSd80Editor& e)
+            : DocumentWindow("Piano roll", juce::Colour(0xff101218),
+                             DocumentWindow::allButtons),
+              ed(e)
+        {
+            setUsingNativeTitleBar(true);
+            setResizable(true, false);
+            setWantsKeyboardFocus(true);
+        }
+
+        void closeButtonPressed() override { ed.dockPianoRoll(); }
+        void minimiseButtonPressed() override { ed.dockPianoRoll(); }
+        void minimisationStateChanged(bool isNowMinimised) override
+        {
+            if (isNowMinimised)
+                ed.dockPianoRoll();
+        }
+        bool keyPressed(const juce::KeyPress& k) override
+        {
+            if (k == juce::KeyPress::escapeKey)
+            {
+                if (isFullScreen())
+                {
+                    setFullScreen(false);
+                    ed.syncRollChrome();
+                    return true;
+                }
+                ed.dockPianoRoll();
+                return true;
+            }
+            return false;
+        }
+
+        ModernEdirolSd80Editor& ed;
+    };
+    std::unique_ptr<PianoRollWindow> rollWindow;
+    bool rollPopped { false };
+
+    juce::Label playlistTitle, playlistHelp, playlistStatus, playlistQueueHdr;
+    juce::TextButton playlistPlay { "PLAY" }, playlistStop { "STOP" };
+    juce::TextButton playlistAddBtn { "ADD" }, playlistClearBtn { "CLEAR" };
+    PlaylistSlot playlistSlotA, playlistSlotB;
+    juce::ListBox playlistQueueBox { "playlist" };
+    struct PlaylistQueueModel : public juce::ListBoxModel
+    {
+        juce::StringArray rows;
+        juce::Colour text { 0xffece8df }, muted { 0xff8b8f9c }, selBg { 0xff323646 };
+        juce::Colour accent { 0xff3dbaa0 }, surface { 0xff1a1d27 };
+        int getNumRows() override { return juce::jmax(1, rows.size()); }
+        void paintListBoxItem(int row, juce::Graphics& g, int w, int h, bool sel) override
+        {
+            if (rows.isEmpty())
+            {
+                g.setColour(muted);
+                g.setFont(juce::FontOptions(13.0f));
+                g.drawText("Queue empty  -  drop more .mid files to keep ping-ponging",
+                           14, 0, w - 28, h, juce::Justification::centredLeft);
+                return;
+            }
+            if (! juce::isPositiveAndBelow(row, rows.size()))
+                return;
+            if (sel)
+            {
+                g.setColour(selBg);
+                g.fillRect(0, 0, w, h);
+            }
+            else if (row == 0)
+            {
+                g.setColour(accent.withAlpha(0.08f));
+                g.fillRect(0, 0, w, h);
+            }
+            auto idx = juce::Rectangle<int>(10, 4, 28, h - 8);
+            g.setColour(row == 0 ? accent.withAlpha(0.22f) : selBg);
+            g.fillRoundedRectangle(idx.toFloat(), 4.0f);
+            g.setColour(row == 0 ? accent : muted);
+            g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
+            g.drawText(juce::String(row + 1), idx, juce::Justification::centred, false);
+            int x = 46;
+            if (row == 0)
+            {
+                g.setColour(accent);
+                g.setFont(juce::FontOptions(10.0f).withStyle("Bold"));
+                g.drawText("NEXT", x, 0, 44, h, juce::Justification::centredLeft, false);
+                x += 48;
+            }
+            g.setColour(text);
+            g.setFont(juce::FontOptions(14.0f));
+            g.drawText(rows[row], x, 0, w - x - 12, h, juce::Justification::centredLeft, true);
+        }
+    } playlistModel;
 
     juce::Label optionsTitle, skinTitle, creditsBody, midiNote, shortcutsTitle, shortcutsBody;
     juce::Label audioTitle, hostAudioBanner, portsTitle;

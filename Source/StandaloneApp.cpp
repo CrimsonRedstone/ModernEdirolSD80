@@ -1,6 +1,19 @@
 #include <JuceHeader.h>
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #include "BinaryData.h"
+#include "PluginProcessor.h"
+
+// Immediate USB panic so a hanging SD-80 note dies before MIDI ports close.
+// processBlock may already have stopped, so this cannot go through the throttle.
+static void panicHardware(juce::StandalonePluginHolder* holder, bool waitForUsb)
+{
+    if (holder == nullptr || holder->processor == nullptr)
+        return;
+    if (auto* p = dynamic_cast<ModernEdirolSd80Processor*>(holder->processor.get()))
+        p->silenceForQuit();
+    if (waitForUsb)
+        juce::Thread::sleep(50);
+}
 
 // Custom standalone: native title bar only. No JUCE "Options" / "Settings" chrome.
 // Audio + MIDI-input live in the plugin OPTIONS tab (AudioDeviceSelectorComponent).
@@ -42,6 +55,8 @@ public:
 
     ~Mesd80Window() override
     {
+        panicHardware(holder.get(), true);
+
         if (holder != nullptr)
             holder->savePluginState();
         if (auto* s = appProps.getUserSettings())
@@ -55,6 +70,7 @@ public:
 
     void closeButtonPressed() override
     {
+        panicHardware(holder.get(), false);
         juce::JUCEApplicationBase::quit();
     }
 
@@ -110,6 +126,13 @@ public:
     void initialise(const juce::String&) override
     {
         mainWindow = std::make_unique<Mesd80Window>();
+    }
+
+    void systemRequestedQuit() override
+    {
+        if (mainWindow != nullptr)
+            panicHardware(mainWindow->holder.get(), false);
+        quit();
     }
 
     void shutdown() override

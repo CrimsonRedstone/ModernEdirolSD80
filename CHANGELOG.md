@@ -2,6 +2,36 @@
 
 All notable changes to **Modern Edirol SD-80** live here. Copy this file to the GitHub release notes when you push.
 
+## 1.6.5 — 2026-09-17
+
+Falling piano-roll (notes come toward a bottom keyboard). Guitar Hero glow on hit. POP OUT / FULL; minimize or close docks it back on PLAYER.
+
+## 1.6.4 — 2026-09-17
+
+
+Playlist files show on the PLAYER cassette and piano-roll. Cassette PLAY / PAUSE / STOP drive the playlist until you load a tape (that disarms it). LOOP while armed: whole playlist, this song, off. Send setup is locked while armed. Piano-roll shows Part B when that deck plays.
+
+## 1.6.3 — 2026-09-17
+
+
+Standalone close (X or Alt+F4) sends all-notes-off / all-sound-off on both USB ports, then exits. No dialog. Stops hanging notes on the module.
+
+## 1.6.2 — 2026-09-17
+
+PLAYLIST tab: Part A / Part B deck cards with status, elapsed time and a live progress bar. Queue marks the next file.
+
+## 1.6.1 — 2026-09-17
+
+MSVC: playlist ADD uses `canSelectMultipleItems` (JUCE 9 has no `canSelectMultipleFiles`).
+
+## 1.6.0 — 2026-09-17
+
+FL piano-roll notes now default to Part A as-played (same channels as the cassette). Old sessions that stored Follow SEL as 0 are migrated once. Player colours are display-only. PLAYLIST tab ping-pongs files on Part A/B. DEMOS tab removed.
+
+## 1.5.5 — 2026-08-30
+
+README no longer documents the v1 FL Studio ports 8 & 9 workaround. Part A/B USB in OPTIONS is how the module is driven.
+
 ## 1.5.4 — 2026-08-30
 
 MSVC: extra brace in the piano-roll timer (C2059 `else`). `build.bat` only — one log at `logs\build.log`. No wrapper bats, no copies at the project root.
